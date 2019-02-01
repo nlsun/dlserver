@@ -52,6 +52,7 @@ class SimpleHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         f = None
         if os.path.isdir(path):
             parts = urllib.parse.urlsplit(self.path)
+            print(urllib.parse.parse_qs(parts.query))
             if not parts.path.endswith('/'):
                 # redirect browser - doing basically what apache does
                 self.send_response(http.server.HTTPStatus.MOVED_PERMANENTLY)
@@ -155,19 +156,27 @@ class SimpleHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
         r.append('<body>\n<h1>%s</h1>' % title)
         r.append('<hr>\n<ul>')
         for name in list:
+            isdir = False
             fullname = os.path.join(path, name)
             displayname = linkname = name
             # Append / for directories or @ for symbolic links
             if os.path.isdir(fullname):
                 displayname = name + "/"
                 linkname = name + "/"
+                isdir = True
             if os.path.islink(fullname):
                 displayname = name + "@"
                 # Note: a link to a directory displays with @ and links with /
-            r.append('<li><a href="%s">%s</a></li>'
-                     % (urllib.parse.quote(linkname,
-                                           errors='surrogatepass'),
-                        html.escape(displayname, quote=False)))
+            link_html = urllib.parse.quote(linkname, errors='surrogatepass')
+            display_html = html.escape(displayname, quote=False)
+
+            prepend = ""
+            if isdir:
+                prepend = ('<a href="%s">%s</a>'
+                           % (link_html+"?download=true", "[DL] :: "))
+
+            r.append('<li>%s<a href="%s">%s</a></li>'
+                     % (prepend, link_html, display_html))
         r.append('</ul>\n<hr>\n</body>\n</html>\n')
         encoded = '\n'.join(r).encode(enc, 'surrogateescape')
         f = io.BytesIO()
@@ -254,10 +263,14 @@ class SimpleHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 def run(args):
     # shutil.make_archive(output_filename, 'zip', dir_name)
 
-    handler = http.server.SimpleHTTPRequestHandler
+    handler = SimpleHTTPRequestHandler
     with socketserver.TCPServer((args.host, args.port), handler) as httpd:
         print("serving at {}:{}".format(args.host, args.port))
-        httpd.serve_forever()
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        httpd.server_close()
 
 
 def main():
